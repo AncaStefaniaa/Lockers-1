@@ -1,19 +1,25 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <pthread.h>
 #include <string.h>
+#include <semaphore.h>
+
+#define NUM_THREADS 10
 
 typedef struct {
 	sempahore rw_mutex;
 	semaphore mutex;
 	int read_count;
-} rwlock;
+} rwlock_t;
 
+rwlock_t rwlock;
 
-int rwl_init(rwlock *rwl) {
+int rwl_init(rwlock_t *rwl) {
 	int err;
 	
 	err = sem_init(rwl->rw_mutex, 0, 1);
@@ -29,7 +35,7 @@ int rwl_init(rwlock *rwl) {
 	return 0;
 }
 
-int rwl_destroy(rwlock *rwl) {
+int rwl_destroy(rwlock_t *rwl) {
 	int err;
 	
 	err = sem_destroy(&rwl->rw_mutex);
@@ -44,7 +50,7 @@ int rwl_destroy(rwlock *rwl) {
 }
 	
 
-void writer(rwlock *rwl) {
+int writer(rwlock_t *rwl) {
 	sem_wait(rwl->rw_mutex);
 
 	/* WRITE */
@@ -55,8 +61,8 @@ void writer(rwlock *rwl) {
 	}
 
 	const char *buff = "Data written by the writer\n";
-	size_t len_buff = strlen(buf);
-	ssize_t writeb = write(fd_out, buff, len_buff);
+	size_t len_buff = strlen(buff);
+	ssize_t write_b = write(fd_out, buff, len_buff);
 	if (write_b != len_buff) {
 		perror(NULL);
 		return errno;
@@ -69,18 +75,19 @@ void writer(rwlock *rwl) {
 	/* END */
 
 	sem_post(rwl->rw_mutex);
+
+	return 0;
 }
 
 
-void reader() {
-	sem_wait(mutex);
-	read_count++;
-	if (read_count == 1)
-		sem_wait(rw_mutex);
-	sem_signal(mutex);
+int reader(rwlock_t *rwl) {
+	sem_wait(rwl->mutex);
+	rwl->read_count++;
+	if (rwl->read_count == 1)
+		sem_wait(rwl->rw_mutex);
+	sem_post(rwl->mutex);
 
 	/* READ */
-	/* Acelasi comentariu ca in cazul write, de folosit open si read in loc de fopen si fprintf */
 	int fd_out = open("my_file.txt", O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
 	if (fd_out == -1) {
 		perror(NULL);
@@ -88,13 +95,12 @@ void reader() {
 	}
 	
 	char *buff = "Data read by the reader!\n";
-	size_t len_buff = strlen(buf);
-	ssize_t writeb = write(fd_out, buff, len_buff);
+	size_t len_buff = strlen(buff);
+	ssize_t write_b = write(fd_out, buff, len_buff);
 	if (write_b != len_buff) {
 		perror(NULL);
 		return errno;
 	}
-	
 
 	sleep(1);
 	
@@ -103,17 +109,71 @@ void reader() {
 		return errno;
 	}
 
-	sem_wait(mutex);
-	read_count--;
-	if (read_count == 0)
-		sem_signal(rw_mutex);
-	sem_signal(mutex);
+	sem_wait(rwl->mutex);
+	rwl->read_count--;
+	if (rwl->read_count == 0)
+		sem_post(rwl->rw_mutex);
+	sem_post(rwl->mutex);
+
+	return 0;
+}
+
+void *read_write(void *arg) {
+    char rw = *(char *)arg;
+    if (rw == 'R') {
+        int err = reader(&rwlock);
+        if (err != 0) {
+            exit(EXIT_FAILURE);
+        }
+    }
+    else {
+        int err = writer(&rwlock);
+        if (err != 0) {
+            exit(EXIT_FAILURE);
+        }
+    }
 }
 
 
 int main() {
+    int cnt_threads = NUM_THREADS;
+	int i;
 
-	/*Cum nu mi-a zis nimic concludent, creati aici cateva threaduri reader si cateva writer*/
-	/*Apoi faceti join pentru toate si verificati ca nu s-au transmis mesaje incomplete sau interpuse de exemplu "Data read Data read by the reader!by the reader!" daca mutex-ul functioneaza mesajele se vor trimite complet inainte ca alt thread cititor sau scriitor sa intervina*/
+	rwl_init(&rwlock);
+
+	char *rw_array = (char *)malloc(cnt_threads * sizeof(char));
+	for (i = 0; i < cnt_threads; ++i)
+		if (scanf("%c", rw_array + i) != 1) {
+			errno = EINVAL;
+			perror(NULL);
+			free(rw_array);
+			return errno;
+		}
+
+    pthread_t *threads = (pthread_t *)malloc(cnt_threads * sizeof(pthread_t));
+	for (i = 0; i < cnt_threads; ++i)
+		if (rw_array[i] == 'R' || rw_array[i] == 'W') {
+		    if (pthread_create(threads + i, NULL, read_write, rw_array[i])) {
+		        perror(NULL);
+		        return errno;
+		    }
+		} else {
+	        // the current character is not a reader or a writer
+	        // we can ignore it or we can terminate the program
+	        return -1;
+	    }
+
+    for (i = 0; i < cnt_threads; ++i) {
+        if (pthread_join(threads[i], NULL)) {
+            perror(NULL);
+            return errno;
+        }
+    }
+
+    free(rw_array);
+    free(threads);
+
+    rwl_destroy(&rwlock);
+
 	return 0;
 }
