@@ -1,6 +1,6 @@
 #include "semafor.h"
 
-int sem_init (semafor* sem, int mp, int initial_value) {
+int sem_init (sem_t* sem, int mp, int initial_value) {
 
 	sem->lock  = (int*) calloc(1, sizeof(int));
 	sem->value = (int*) malloc(	  sizeof(int));
@@ -20,7 +20,7 @@ int sem_init (semafor* sem, int mp, int initial_value) {
 }
 
 
-int sem_destroy (semafor* sem) {
+int sem_destroy (sem_t* sem) {
 
 	free(sem->lock);
 	free(sem->value);
@@ -28,7 +28,7 @@ int sem_destroy (semafor* sem) {
 
 }
 
-int sem_wait (semafor* sem) {
+int sem_wait (sem_t* sem) {
 
 	if (*sem->lock != 0 && *sem->lock != 1) {
 		return -1;
@@ -73,7 +73,7 @@ int sem_wait (semafor* sem) {
 }
 
 
-int sem_post (semafor* sem) {
+int sem_post (sem_t* sem) {
 	if (*sem->lock != 0 && *sem->lock != 1) {
 		return -1;
 	}
