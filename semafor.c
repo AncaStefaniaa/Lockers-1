@@ -25,7 +25,6 @@ int sem_destroy (sem_t* sem) {
 	free(sem->lock);
 	free(sem->value);
 	return 0;
-
 }
 
 int sem_wait (sem_t* sem) {
@@ -74,6 +73,7 @@ int sem_wait (sem_t* sem) {
 
 
 int sem_post (sem_t* sem) {
+
 	if (*sem->lock != 0 && *sem->lock != 1) {
 		return -1;
 	}

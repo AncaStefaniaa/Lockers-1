@@ -3,12 +3,12 @@
 #include <errno.h>
 #include <pthread.h>
 
-
 #include "semafor.h"
+
 
 #define threadsNumber 5
 
-semafor sem;
+sem_t sem;
 
 pthread_mutex_t mtx;
 int S = 0;
@@ -90,3 +90,4 @@ int main()
 	sem_destroy(&sem);
 	return 0;
 }
+
